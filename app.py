@@ -232,7 +232,7 @@ st.sidebar.header("📱 Telegram Notification Settings")
 enable_telegram = st.sidebar.checkbox("Enable Telegram Alerts", value=True)
 
 bot_token_input = st.sidebar.text_input("Bot Token", value="8842418125:AAERBk0X1TNv9sbWy9nTOMsK0kD1LtpqY6U", type="password")
-chat_id_input = st.sidebar.text_input("Chat ID", value="8842418125", help="Enter your personal numeric Chat ID from @userinfobot")
+chat_id_input = st.sidebar.text_input("Chat ID", value="1951054564", help="Enter your personal numeric Chat ID from @userinfobot")
 
 if st.sidebar.button("Test Telegram Bot"):
     test_msg = "#TestAlert Bot connected successfully!"
