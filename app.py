@@ -5,16 +5,17 @@ import yfinance as yf
 import requests
 from io import StringIO
 from datetime import datetime, timedelta
+import plotly.graph_objects as go
 
 # Page Configuration
 st.set_page_config(
-    page_title="Nifty 500 Advanced Screener (TradingView Style)",
-    page_icon="📊",
+    page_title="Nifty 500 Advanced Screener & Charts",
+    page_icon="📈",
     layout="wide"
 )
 
-st.title("📊 Nifty 500 Advanced Technical Screener")
-st.markdown("Screening live Nifty 500 stocks with **Price > 20**, **10D Avg Vol > 100K**, **Close within 0-20% of All-Time High**, **Price > 50 SMA**, alongside **Tech, MA, and Oscillator Ratings**.")
+st.title("📈 Nifty 500 Technical Screener & Interactive Charts")
+st.markdown("Screening live Nifty 500 stocks with **Price > 20**, **10D Avg Vol > 100K**, **Close within 0-20% of All-Time High**, and **Price > 50 SMA**. Click any stock to view its 1-day chart.")
 
 @st.cache_data(ttl=86400)
 def get_nifty500_tickers():
@@ -36,12 +37,10 @@ def get_nifty500_tickers():
             "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS"]
 
 def calculate_ratings(df):
-    """Computes MA rating, Oscillator rating, and Combined Tech Rating similar to TradingView logic"""
     close = df['Close']
     high = df['High']
     low = df['Low']
     
-    # 1. Moving Averages Calculation
     sma_10 = close.rolling(10).mean().iloc[-1]
     sma_20 = close.rolling(20).mean().iloc[-1]
     sma_50 = close.rolling(50).mean().iloc[-1]
@@ -57,10 +56,8 @@ def calculate_ratings(df):
     elif ma_buy_count == 1:
         ma_rating = "Neutral"
     else:
-        id_val = "Sell" if ma_buy_count == 0 else "Strong Sell"
-        ma_rating = id_val
+        ma_rating = "Sell"
 
-    # 2. Oscillators Calculation (RSI & Stochastic Proxy)
     delta = close.diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
@@ -68,7 +65,6 @@ def calculate_ratings(df):
     rsi = 100 - (100 / (1 + rs))
     curr_rsi = rsi.iloc[-1]
     
-    # Stochastic %K (14)
     low_14 = low.rolling(14).min()
     high_14 = high.rolling(14).max()
     stoch_k = 100 * (close - low_14) / (high_14 - low_14)
@@ -91,7 +87,6 @@ def calculate_ratings(df):
     else:
         os_rating = "Sell"
 
-    # 3. Combined Tech Rating
     total_score = ma_buy_count + os_signals
     if total_score >= 5:
         tech_rating = "Strong Buy"
@@ -108,7 +103,7 @@ def calculate_ratings(df):
 def fetch_and_screen_stocks(tickers):
     matched_stocks = []
     end_date = datetime.today()
-    start_date = end_date - timedelta(days=500) # Deep window to capture all-time high & 200 SMA
+    start_date = end_date - timedelta(days=500)
     
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -129,30 +124,23 @@ def fetch_and_screen_stocks(tickers):
             close = df['Close']
             volume = df['Volume']
             high = df['High']
-            
             curr_close = close.iloc[-1]
 
-            # Filter 1: Price >= 20 INR
             if curr_close < 20:
                 continue
 
-            # Filter 2: Avg vol, 10D > 100K
             vol_sma_10 = volume.rolling(window=10).mean().iloc[-1]
             if vol_sma_10 <= 100000:
                 continue
 
-            # Filter 3: High, All Time above Price by 0% to 20%
-            # (Close >= ATH * 0.80 and Close <= ATH)
             all_time_high = high.max()
             if curr_close < (all_time_high * 0.80) or curr_close > all_time_high:
                 continue
 
-            # Filter 4: Price > SMA, 50
             sma_50 = close.rolling(window=50).mean().iloc[-1]
             if curr_close <= sma_50:
                 continue
 
-            # Calculate technical ratings
             tech_rating, ma_rating, os_rating, rsi_val = calculate_ratings(df)
 
             matched_stocks.append({
@@ -183,31 +171,79 @@ universe_choice = st.sidebar.selectbox(
 
 run_button = st.sidebar.button("Run Screener", type="primary")
 
+# Session state to store scan results
+if "results_df" not in st.session_state:
+    st.session_state.results_df = pd.DataFrame()
+
 if run_button:
-    with st.spinner("Downloading data, computing ATH boundaries, moving averages, and technical ratings..."):
+    with st.spinner("Scanning market and computing metrics..."):
         tickers_list = get_nifty500_tickers() if "Nifty 500" in universe_choice else [
             "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", 
-            "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS",
-            "AXISPAINT.NS", "SUNPHARMA.NS", "TITAN.NS", "BAJFINANCE.NS"
+            "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS"
         ]
-        
-        results_df = fetch_and_screen_stocks(tickers_list)
-        
-    if not results_df.empty:
-        st.success(f"Scan complete! Found {len(results_df)} stocks matching your exact criteria.")
-        
-        # Display DataFrame with color highlight for ratings if desired
-        st.dataframe(results_df, use_container_width=True)
-        
-        # CSV Export
-        csv_export = results_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download Screened Results (CSV)",
-            data=csv_export,
-            file_name=f"nifty500_technical_screener_{datetime.today().strftime('%Y-%m-%d')}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.warning("No stocks matched all specified criteria concurrently.")
+        st.session_state.results_df = fetch_and_screen_stocks(tickers_list)
+
+if not st.session_state.results_df.empty:
+    df_res = st.session_state.results_df
+    st.success(f"Found {len(df_res)} matching stocks.")
+    
+    # Interactive Table with clickable TradingView links
+    st.markdown("### 📋 Screened Results (Click Ticker to open TradingView in a new tab)")
+    
+    # Add direct TradingView URL column
+    display_df = df_res.copy()
+    display_df['TradingView Chart'] = display_df['Ticker'].apply(
+        lambda t: f"https://www.tradingview.com/chart/?symbol=NSE:{t}"
+    )
+    
+    st.dataframe(
+        display_df,
+        column_config={
+            "TradingView Chart": st.column_config.LinkColumn(
+                "Open Chart (New Tab)", 
+                help="Click to open full TradingView chart", 
+                display_text="📈 View Chart"
+            )
+        },
+        use_container_width=True
+    )
+    
+    st.markdown("---")
+    st.markdown("### 📊 Interactive 1-Day Candlestick Chart Viewer")
+    
+    selected_ticker = st.selectbox("Select a stock to inspect its 1-Day chart:", df_res['Ticker'].tolist())
+    
+    if selected_ticker:
+        with st.spinner(f"Loading 1-day chart for {selected_ticker}..."):
+            chart_df = yf.download(f"{selected_ticker}.NS", period="1y", interval="1d", progress=False)
+            if isinstance(chart_df.columns, pd.MultiIndex):
+                chart_df.columns = chart_df.columns.get_level_values(0)
+                
+            fig = go.Figure(data=[go.Candlestick(
+                x=chart_df.index,
+                open=chart_df['Open'],
+                high=chart_df['High'],
+                low=chart_df['Low'],
+                close=chart_df['Close'],
+                name=selected_ticker
+            )])
+            
+            # Add 50 SMA
+            chart_df['SMA_50'] = chart_df['Close'].rolling(50).mean()
+            fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['SMA_50'], line=dict(color='orange', width=1.5), name='50 SMA'))
+            
+            fig.update_layout(
+                title=f"{selected_ticker} - Daily Chart & 50 SMA",
+                yaxis_title="Price (INR)",
+                xaxis_rangeslider_visible=False,
+                height=500,
+                template="plotly_dark"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Direct link button below chart
+            tv_url = f"https://www.tradingview.com/chart/?symbol=NSE:{selected_ticker}"
+            st.markdown(f"🔗 [Click here to open {selected_ticker} directly on TradingView in a new tab]({tv_url})", unsafe_allow_html=True)
+
 else:
-    st.info("Click **Run Screener** in the sidebar to execute the live market scan.")
+    st.info("Click **Run Screener** in the sidebar to execute the scan.")
