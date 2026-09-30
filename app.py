@@ -9,13 +9,13 @@ import plotly.graph_objects as go
 
 # Page Configuration
 st.set_page_config(
-    page_title="Nifty 500 Advanced Screener & Charts",
+    page_title="Nifty 500 Advanced Screener, Sectors & Charts",
     page_icon="📈",
     layout="wide"
 )
 
-st.title("📈 Nifty 500 Technical Screener & Interactive Charts")
-st.markdown("Screening live Nifty 500 stocks with **Price > 20**, **10D Avg Vol > 100K**, **Close within 0-20% of All-Time High**, and **Price > 50 SMA**. Click any stock to view its 1-day chart.")
+st.title("📈 Nifty 500 Technical Screener with Sectors & Charts")
+st.markdown("Screening live Nifty 500 stocks with **Price > 20**, **10D Avg Vol > 100K**, **Close within 0-20% of All-Time High**, and **Price > 50 SMA**, complete with Sector mapping and interactive charts.")
 
 @st.cache_data(ttl=86400)
 def get_nifty500_tickers():
@@ -160,7 +160,21 @@ def fetch_and_screen_stocks(tickers):
 
     status_text.empty()
     progress_bar.empty()
-    return pd.DataFrame(matched_stocks)
+    
+    res_df = pd.DataFrame(matched_stocks)
+    
+    # Fetch Sector & Industry for matched stocks efficiently
+    if not res_df.empty:
+        sectors = []
+        for ticker in res_df['Ticker']:
+            try:
+                info = yf.Ticker(f"{ticker}.NS").info
+                sectors.append(info.get('sector', 'N/A'))
+            except:
+                sectors.append('N/A')
+        res_df.insert(1, "Sector", sectors)
+        
+    return res_df
 
 # Sidebar UI
 st.sidebar.header("Screener Settings")
@@ -171,12 +185,11 @@ universe_choice = st.sidebar.selectbox(
 
 run_button = st.sidebar.button("Run Screener", type="primary")
 
-# Session state to store scan results
 if "results_df" not in st.session_state:
     st.session_state.results_df = pd.DataFrame()
 
 if run_button:
-    with st.spinner("Scanning market and computing metrics..."):
+    with st.spinner("Scanning market, calculating ratings, and fetching sectors..."):
         tickers_list = get_nifty500_tickers() if "Nifty 500" in universe_choice else [
             "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", 
             "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS"
@@ -190,7 +203,6 @@ if not st.session_state.results_df.empty:
     # Interactive Table with clickable TradingView links
     st.markdown("### 📋 Screened Results (Click Ticker to open TradingView in a new tab)")
     
-    # Add direct TradingView URL column
     display_df = df_res.copy()
     display_df['TradingView Chart'] = display_df['Ticker'].apply(
         lambda t: f"https://www.tradingview.com/chart/?symbol=NSE:{t}"
@@ -228,7 +240,6 @@ if not st.session_state.results_df.empty:
                 name=selected_ticker
             )])
             
-            # Add 50 SMA
             chart_df['SMA_50'] = chart_df['Close'].rolling(50).mean()
             fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['SMA_50'], line=dict(color='orange', width=1.5), name='50 SMA'))
             
@@ -241,7 +252,6 @@ if not st.session_state.results_df.empty:
             )
             st.plotly_chart(fig, use_container_width=True)
             
-            # Direct link button below chart
             tv_url = f"https://www.tradingview.com/chart/?symbol=NSE:{selected_ticker}"
             st.markdown(f"🔗 [Click here to open {selected_ticker} directly on TradingView in a new tab]({tv_url})", unsafe_allow_html=True)
 
