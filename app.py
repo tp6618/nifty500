@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 st.title("🚀 Nifty 500 Pro Screener: RS, EMAs & Telegram Alerts")
-st.markdown("Screening with **Price > 20**, **10D Vol > 100K**, **0-20% of ATH**, **50 SMA**, **9/20 EMA Confluence**, **RS vs Nifty 50**, and strict **Telegram Alerts** (#Stockname) when **Tech, MA, & OS Ratings are all Strong Buy**.")
+st.markdown("Screening with **Price > 20**, **10D Vol > 100K**, **0-20% of ATH**, **50 SMA**, **9/20 EMA Confluence**, **RS vs Nifty 50**, and comma-separated **Telegram Alerts** (`stockname, stockname, stockname,`) when **Tech, MA, & OS Ratings are all Strong Buy**.")
 
 # Telegram Alert Function
 def send_telegram_alert(bot_token, chat_id, message):
@@ -235,7 +235,7 @@ bot_token_input = st.sidebar.text_input("Bot Token", value="8842418125:AAERBk0X1
 chat_id_input = st.sidebar.text_input("Chat ID", value="1951054564")
 
 if st.sidebar.button("Test Telegram Bot"):
-    test_msg = "#TestAlert Bot connected successfully!"
+    test_msg = "RELIANCE, TCS, INFY, "
     success, resp = send_telegram_alert(bot_token_input, chat_id_input, test_msg)
     if success:
         st.sidebar.success("Test message sent successfully! Check your Telegram.")
@@ -267,13 +267,14 @@ if run_button:
             ]
             
             if not triple_strong_buys.empty:
-                alert_count = 0
-                for _, row in triple_strong_buys.iterrows():
-                    msg = f"#{row['Ticker']}"
-                    success, _ = send_telegram_alert(bot_token_input, chat_id_input, msg)
-                    if success:
-                        alert_count += 1
-                st.sidebar.success(f"Successfully sent {alert_count} Telegram alerts!")
+                tickers_list = triple_strong_buys['Ticker'].tolist()
+                # Comma-separated format: stockname, stockname, stockname,
+                msg = ", ".join(tickers_list) + ", "
+                success, resp = send_telegram_alert(bot_token_input, chat_id_input, msg)
+                if success:
+                    st.sidebar.success(f"Successfully sent Telegram alert with {len(tickers_list)} stocks!")
+                else:
+                    st.sidebar.error(f"Failed to send Telegram alert: {resp}")
             else:
                 st.sidebar.info("Scan complete, but no stocks matched Tech, MA, & OS all equal to 'Strong Buy'.")
 
