@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 st.title("🚀 Nifty 500 Pro Screener: RS, EMAs & Telegram Alerts")
-st.markdown("Screening with **Price > 20**, **10D Vol > 100K**, **0-20% of ATH**, **50 SMA**, **9/20 EMA Confluence**, **RS vs Nifty 50**, and comma-separated **Telegram Alerts** (`stockname, stockname, stockname,`) when **Tech, MA, & OS Ratings are Strong Buy AND RSI >= 50 AND Price >= 9 EMA > 20 EMA > 50 EMA**.")
+st.markdown("Screening with **Price > 20**, **10D Vol > 100K**, **0-20% of ATH**, **50 SMA**, **9/20 EMA Confluence**, **RS vs Nifty 50**, and comma-separated **Telegram Alerts** (`stockname, stockname, stockname,`) when **Tech, MA, & OS Ratings are Strong Buy AND RSI >= 50 AND Price >= 9 EMA > 20 EMA > 50 EMA AND 0-15% from ATH**.")
 
 # Telegram Alert Function
 def send_telegram_alert(bot_token, chat_id, message):
@@ -260,7 +260,7 @@ if run_button:
             ]
         st.session_state.results_df = fetch_and_screen_stocks(tickers_list)
         
-        # Strict Alert Filter: Tech/MA/OS = Strong Buy AND RSI >= 50 AND Price >= 9 EMA > 20 EMA > 50 EMA
+        # Strict Alert Filter: Tech/MA/OS = Strong Buy AND RSI >= 50 AND EMA Stack AND 0-15% from ATH (>= 85% of ATH)
         if enable_telegram and bot_token_input and chat_id_input and not st.session_state.results_df.empty:
             filtered_alerts = st.session_state.results_df[
                 (st.session_state.results_df['Tech Rating'] == 'Strong Buy') &
@@ -269,7 +269,8 @@ if run_button:
                 (st.session_state.results_df['RSI (14)'] >= 50.0) &
                 (st.session_state.results_df['Close Price'] >= st.session_state.results_df['9 EMA']) &
                 (st.session_state.results_df['9 EMA'] > st.session_state.results_df['20 EMA']) &
-                (st.session_state.results_df['20 EMA'] > st.session_state.results_df['50 EMA'])
+                (st.session_state.results_df['20 EMA'] > st.session_state.results_df['50 EMA']) &
+                (st.session_state.results_df['% of ATH'] >= 85.0)
             ]
             
             if not filtered_alerts.empty:
@@ -281,7 +282,7 @@ if run_button:
                 else:
                     st.sidebar.error(f"Failed to send Telegram alert: {resp}")
             else:
-                st.sidebar.info("Scan complete, but no stocks matched the complete alert criteria.")
+                st.sidebar.info("Scan complete, but no stocks matched the complete alert criteria (including 0-15% from ATH).")
 
 if not st.session_state.results_df.empty:
     df_res = st.session_state.results_df
