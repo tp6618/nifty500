@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 st.title("🚀 Nifty 500 Pro Screener: RS, EMAs & Telegram Alerts")
-st.markdown("Screening with **Price > 20**, **10D Vol > 100K**, **0-20% of ATH**, **50 SMA**, **9/20 EMA Confluence**, **RS vs Nifty 50**, and comma-separated **Telegram Alerts** (`stockname, stockname, stockname,`) when **Tech, MA, & OS Ratings are all Strong Buy AND RSI >= 50**.")
+st.markdown("Screening with **Price > 20**, **10D Vol > 100K**, **0-20% of ATH**, **50 SMA**, **9/20 EMA Confluence**, **RS vs Nifty 50**, and comma-separated **Telegram Alerts** (`stockname, stockname, stockname,`) when **Tech, MA, & OS Ratings are Strong Buy AND RSI >= 50 AND Price >= 9 EMA > 20 EMA > 50 EMA**.")
 
 # Telegram Alert Function
 def send_telegram_alert(bot_token, chat_id, message):
@@ -69,6 +69,7 @@ def calculate_ratings_and_emas(df):
     
     ema_9 = close.ewm(span=9, adjust=False).mean().iloc[-1]
     ema_20 = close.ewm(span=20, adjust=False).mean().iloc[-1]
+    ema_50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
     sma_50 = close.rolling(50).mean().iloc[-1]
     sma_200 = close.rolling(200).mean().iloc[-1] if len(close) >= 200 else sma_50
     curr_close = close.iloc[-1]
@@ -128,7 +129,7 @@ def calculate_ratings_and_emas(df):
     else:
         tech_rating = "Sell"
         
-    return tech_rating, ma_rating, os_rating, round(curr_rsi, 2), round(ema_9, 2), round(ema_20, 2)
+    return tech_rating, ma_rating, os_rating, round(curr_rsi, 2), round(ema_9, 2), round(ema_20, 2), round(ema_50, 2)
 
 @st.cache_data(ttl=3600)
 def fetch_and_screen_stocks(tickers):
@@ -177,7 +178,7 @@ def fetch_and_screen_stocks(tickers):
             if curr_close <= sma_50:
                 continue
 
-            tech_rating, ma_rating, os_rating, rsi_val, ema_9, ema_20 = calculate_ratings_and_emas(df)
+            tech_rating, ma_rating, os_rating, rsi_val, ema_9, ema_20, ema_50 = calculate_ratings_and_emas(df)
 
             stock_return_3m = 0.0
             rs_vs_nifty = 0.0
@@ -195,6 +196,7 @@ def fetch_and_screen_stocks(tickers):
                 "RSI (14)": rsi_val,
                 "9 EMA": ema_9,
                 "20 EMA": ema_20,
+                "50 EMA": ema_50,
                 "50 SMA": round(float(sma_50), 2),
                 "10D Vol SMA": int(vol_sma_10),
                 "% of ATH": round(float((curr_close / all_time_high) * 100), 2)
@@ -258,18 +260,20 @@ if run_button:
             ]
         st.session_state.results_df = fetch_and_screen_stocks(tickers_list)
         
-        # Strict Alert Filter: Tech, MA, and OS ratings must ALL be "Strong Buy" AND RSI >= 50
+        # Strict Alert Filter: Tech/MA/OS = Strong Buy AND RSI >= 50 AND Price >= 9 EMA > 20 EMA > 50 EMA
         if enable_telegram and bot_token_input and chat_id_input and not st.session_state.results_df.empty:
-            triple_strong_buys = st.session_state.results_df[
+            filtered_alerts = st.session_state.results_df[
                 (st.session_state.results_df['Tech Rating'] == 'Strong Buy') &
                 (st.session_state.results_df['MA Rating'] == 'Strong Buy') &
                 (st.session_state.results_df['Os Rating'] == 'Strong Buy') &
-                (st.session_state.results_df['RSI (14)'] >= 50.0)
+                (st.session_state.results_df['RSI (14)'] >= 50.0) &
+                (st.session_state.results_df['Close Price'] >= st.session_state.results_df['9 EMA']) &
+                (st.session_state.results_df['9 EMA'] > st.session_state.results_df['20 EMA']) &
+                (st.session_state.results_df['20 EMA'] > st.session_state.results_df['50 EMA'])
             ]
             
-            if not triple_strong_buys.empty:
-                tickers_list = triple_strong_buys['Ticker'].tolist()
-                # Comma-separated format: stockname, stockname, stockname,
+            if not filtered_alerts.empty:
+                tickers_list = filtered_alerts['Ticker'].tolist()
                 msg = ", ".join(tickers_list) + ", "
                 success, resp = send_telegram_alert(bot_token_input, chat_id_input, msg)
                 if success:
@@ -277,7 +281,7 @@ if run_button:
                 else:
                     st.sidebar.error(f"Failed to send Telegram alert: {resp}")
             else:
-                st.sidebar.info("Scan complete, but no stocks matched Tech/MA/OS 'Strong Buy' + RSI >= 50.")
+                st.sidebar.info("Scan complete, but no stocks matched the complete alert criteria.")
 
 if not st.session_state.results_df.empty:
     df_res = st.session_state.results_df
@@ -322,14 +326,14 @@ if not st.session_state.results_df.empty:
             
             chart_df['EMA_9'] = chart_df['Close'].ewm(span=9, adjust=False).mean()
             chart_df['EMA_20'] = chart_df['Close'].ewm(span=20, adjust=False).mean()
-            chart_df['SMA_50'] = chart_df['Close'].rolling(50).mean()
+            chart_df['EMA_50'] = chart_df['Close'].ewm(span=50, adjust=False).mean()
             
             fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['EMA_9'], line=dict(color='cyan', width=1), name='9 EMA'))
             fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['EMA_20'], line=dict(color='magenta', width=1), name='20 EMA'))
-            fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['SMA_50'], line=dict(color='orange', width=1.5), name='50 SMA'))
+            fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['EMA_50'], line=dict(color='orange', width=1.5), name='50 EMA'))
             
             fig.update_layout(
-                title=f"{selected_ticker} - Daily Price with 9/20 EMA & 50 SMA Confluence",
+                title=f"{selected_ticker} - Daily Price with 9/20/50 EMA Confluence",
                 yaxis_title="Price (INR)",
                 xaxis_rangeslider_visible=False,
                 height=550,
